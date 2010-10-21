@@ -1,0 +1,162 @@
+#!/usr/bin/env ruby
+
+# == Description
+#   The mvg tool is cli tool consuming the http://www.mvg-live.de service
+#   to make it accessable from command line.
+#
+# == Examples
+#
+#     mvg Marienplatz
+#     mvg Marienplatz --no-bus
+#     mvg Hauptbahnhof -btu
+#
+# == Usage
+#   mvg station [-ubst] [--no-ubahn] [--no-sbahn] [--no-bus] [--no-tram]
+#
+#   For help use: mvg -h
+#
+# == Options
+#   -u, --no-ubahn      Dont check for ubahn
+#   -s, --no-sbahn      Dont check for sbahn
+#   -b, --no-bus        Dont check for bus
+#   -t, --no-tram       Dont check for tram
+#   -h, --help          Displays help message
+#   -v, --version       Display the version, then exit
+#   -V, --verbose       Verbose output
+#
+# == Author
+#   Konstantin Ikaros Kanellopoulos
+#
+# == Copyright
+#   Copyright (c) 2007 Konstantin Ikaros Kanellopoulos. Licensed under the MIT License:
+#   http://www.opensource.org/licenses/mit-license.php
+require 'optparse'
+require 'rdoc/usage'
+require 'ostruct'
+require 'date'
+require "rubygems"
+require "nokogiri"
+require "open-uri"
+
+class MvgLive
+
+  VERSION = '0.0.1'
+
+  # The URL where the servce is available
+  URL = "http://www.mvg-live.de/ims/dfiStaticAnzeige.svc"
+
+  # These are the difernt means of transportatios provided by mvg
+  TRANSPORTATIONS = %w[ubahn bus sbahn tram]
+
+  attr_reader :options
+
+  attr_reader :url_parameters
+
+  def initialize(arguments, stdin)
+    @arguments = arguments
+    @stdin = stdin
+
+    # Set defaults
+    @options = OpenStruct.new
+
+    @url_parameters = {}
+    TRANSPORTATIONS.each do |transport|
+      @url_parameters[transport] = "checked"
+    end
+  end
+
+  def run
+    if parsed_options? && arguments_valid?
+      output_options if @options.verbose
+      process_arguments
+      process_command
+    else
+      output_usage
+    end
+  end
+
+  protected
+
+    def parsed_options?
+
+      # Specify options
+      opts = OptionParser.new
+      opts.on('-v', '--version')    { output_version ; exit 0 }
+      opts.on('-h', '--help')       { output_help }
+
+      TRANSPORTATIONS.each do |t|
+        opts.on("-#{t[0,1].downcase}", "--no-#{t}") do
+          @url_parameters[t] = ""
+        end
+      end
+
+      opts.on('-V', '--verbose')    { @options.verbose    = true }
+      opts.parse!(@arguments) rescue return false
+
+      process_options
+      true
+    end
+
+    def process_options
+    end
+
+    def output_options
+      puts "Options:\n"
+
+      @options.marshal_dump.each do |name, val|
+        puts "  #{name} = #{val}"
+      end
+    end
+
+    def arguments_valid?
+      true if @arguments.length == 1
+    end
+
+    def process_arguments
+       @url_parameters[:haltestelle]  = @arguments.first
+    end
+
+    def output_help
+      output_version
+      RDoc::usage() #exits app
+    end
+
+    def output_usage
+      RDoc::usage('usage') # gets usage from comments above
+    end
+
+    def output_version
+      puts "#{File.basename(__FILE__)} version #{VERSION}"
+    end
+
+    def encode_url_value(value)
+      value.gsub(/ß/, "%DF")
+    end
+
+    def process_command
+
+      params = []
+      @url_parameters.each do |param,value|
+        value = encode_url_value(value)
+        params << "#{param}=#{value}"
+      end
+      params = params.join("&")
+
+      url = "#{URL}?#{params}"
+      puts url if @options.verbose
+
+      doc = Nokogiri::HTML(open(url))
+      doc.css('tr').each do |tr|
+        tds = tr.css('td')
+        next unless tds.size == 3
+        puts "%-4s | %-25s | %-2s\n" % tds.map{|td| td.content.gsub(/\s/, "")}
+      end
+    end
+
+    def process_standard_input
+      input = @stdin.read
+    end
+end
+
+app = MvgLive.new(ARGV, STDIN)
+app.run
