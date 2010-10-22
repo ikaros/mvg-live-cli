@@ -1,35 +1,5 @@
 #!/usr/bin/env ruby
 
-# == Description
-#   The mvg tool is cli tool consuming the http://www.mvg-live.de service
-#   to make it accessable from command line.
-#
-# == Examples
-#
-#     mvg Marienplatz
-#     mvg Marienplatz --no-bus
-#     mvg Hauptbahnhof -btu
-#
-# == Usage
-#   mvg station [-ubst] [--no-ubahn] [--no-sbahn] [--no-bus] [--no-tram]
-#
-#   For help use: mvg -h
-#
-# == Options
-#   -u, --no-ubahn      Dont check for ubahn
-#   -s, --no-sbahn      Dont check for sbahn
-#   -b, --no-bus        Dont check for bus
-#   -t, --no-tram       Dont check for tram
-#   -h, --help          Displays help message
-#   -v, --version       Display the version, then exit
-#   -V, --verbose       Verbose output
-#
-# == Author
-#   Konstantin Ikaros Kanellopoulos
-#
-# == Copyright
-#   Copyright (c) 2007 Konstantin Ikaros Kanellopoulos. Licensed under the MIT License:
-#   http://www.opensource.org/licenses/mit-license.php
 require 'optparse'
 require 'rdoc/usage'
 require 'ostruct'
@@ -79,19 +49,25 @@ class MvgLive
 
     def parsed_options?
 
-      # Specify options
-      opts = OptionParser.new
-      opts.on('-v', '--version')    { output_version ; exit 0 }
-      opts.on('-h', '--help')       { output_help }
+      @opts = OptionParser.new do |opts|
+        opts.banner = "Usage: mvg station [options]"
 
-      TRANSPORTATIONS.each do |t|
-        opts.on("-#{t[0,1].downcase}", "--no-#{t}") do
-          @url_parameters[t] = ""
+        opts.separator ""
+        opts.separator "Transportation options:"
+        TRANSPORTATIONS.each do |t|
+          opts.on("-#{t[0,1].downcase}", "--no-#{t}", "Dont display #{t}") do
+            @url_parameters[t] = ""
+          end
         end
-      end
 
-      opts.on('-V', '--verbose')    { @options.verbose    = true }
-      opts.parse!(@arguments) rescue return false
+        opts.separator ""
+        opts.separator "Options:"
+        opts.on('-p', '--http-proxy [proxy]') { |proxy| @options.proxy = proxy }
+        opts.on('-V', '--verbose')            { @options.verbose    = true }
+        opts.on('-v', '--version')            { output_version ; exit 0 }
+        opts.on('-h', '--help')               { output_help }
+      end
+      @opts.parse!(@arguments) rescue return false
 
       process_options
       true
@@ -102,7 +78,6 @@ class MvgLive
 
     def output_options
       puts "Options:\n"
-
       @options.marshal_dump.each do |name, val|
         puts "  #{name} = #{val}"
       end
@@ -117,16 +92,44 @@ class MvgLive
     end
 
     def output_help
+      puts "Description"
+      puts "  The mvg tool is cli tool consuming the http://www.mvg-live.de service"
+      puts "  to make it accessable from command line."
+      puts ""
+      puts "Examples"
+      puts "  mvg Marienplatz"
+      puts "  mvg Marienplatz --no-bus"
+      puts "  mvg Hauptbahnhof -btu"
+      puts ""
+
+      output_usage
+      puts ""
+      output_author
+      puts ""
       output_version
-      RDoc::usage() #exits app
+
+      exit 0
     end
 
     def output_usage
-      RDoc::usage('usage') # gets usage from comments above
+      puts @opts
+    end
+
+    def output_copyright
+      puts "Copyright"
+      puts "  Copyright (c) 2007 Konstantin Ikaros Kanellopoulos. Licensed under the MIT License:"
+      puts "  http://www.opensource.org/licenses/mit-license.php"
+    end
+
+    def output_author
+      puts "Author"
+      puts "  Konstantin Ikaros Kanellopoulos"
+
     end
 
     def output_version
-      puts "#{File.basename(__FILE__)} version #{VERSION}"
+      puts "Version"
+      puts "  #{File.basename(__FILE__)} version #{VERSION}"
     end
 
     def encode_url_value(value)
@@ -145,7 +148,12 @@ class MvgLive
       url = "#{URL}?#{params}"
       puts url if @options.verbose
 
-      doc = Nokogiri::HTML(open(url))
+      # Options for the connection to the service
+      http_options = {}
+      http_options[:proxy] = @options.proxy if @options.proxy
+
+      # get html data
+      doc = Nokogiri::HTML(open(url, http_options))
       doc.css('tr').each do |tr|
         tds = tr.css('td')
         next unless tds.size == 3
