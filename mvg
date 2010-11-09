@@ -5,7 +5,6 @@ require 'rdoc/usage'
 require 'ostruct'
 require 'date'
 require "rubygems"
-require "nokogiri"
 require "open-uri"
 
 class MvgLive
@@ -153,11 +152,12 @@ class MvgLive
       http_options[:proxy] = @options.proxy if @options.proxy
 
       # get html data
-      doc = Nokogiri::HTML(open(url, http_options))
-      doc.css('tr').each do |tr|
-        tds = tr.css('td')
-        next unless tds.size == 3
-        puts "%-4s | %-25s | %-2s\n" % tds.map{|td| td.content.gsub(/\s/, "")}
+      doc = open(url, http_options).read
+      doc.tr!("\n\r\t",'')
+
+      data = doc.scan(/<tr class="row.*?">.*?class="lineColumn">(.*?)<.*?class="stationColumn">(.*?)<.*?class="inMinColumn">(.*?)<.*?<\/tr>/)
+      data.each do|r|
+        puts "%-4s | %-30s | %-3s\n" % r
       end
     end
 
